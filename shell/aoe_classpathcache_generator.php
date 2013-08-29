@@ -7,8 +7,8 @@
 require_once 'abstract.php';
 
 /**
- * AOE ClassPathCache generator
- * Initial idea is from Magento 2 class map FS generator with additional improvements
+ * AOE ClassPathCache generator.
+ * Initial idea is from Magento 2 class map FS generator with additional improvements.
  */
 class Aoe_ClassPathCache_Generator_Shell extends Mage_Shell_Abstract
 {
@@ -53,11 +53,31 @@ PHP;
     );
 
     /**
-     * Initialize application and parse input parameters
+     * Path to file where class path cache should be saved
+     *
+     * @var string
      */
-    public function __construct()
+    private $cacheFilePath;
+
+    /**
+     * Path to magento root folder
+     *
+     * @var string
+     */
+    private $basePath;
+
+    /**
+     * Initialize application and parse input parameters
+     *
+     * @param string $cacheFilePath
+     * @param string $basePath
+     */
+    public function __construct($cacheFilePath = null, $basePath = null)
     {
         parent::__construct();
+
+        $this->cacheFilePath = $cacheFilePath ?: Varien_Autoload::getCacheFilePath();
+        $this->basePath      = $basePath ?: Varien_Autoload::getBp();
 
         if (!extension_loaded('judy')) {
             unset(self::$cacheClassTypes['Judy_Int']);
@@ -80,7 +100,7 @@ PHP;
             if (method_exists($this, $actionMethodName)) {
                 $this->$actionMethodName();
             } else {
-                echo "Action $action not found!\n";
+                echo "Action {$action} not found!" . PHP_EOL;
                 echo $this->usageHelp();
                 exit(1);
             }
@@ -94,7 +114,7 @@ PHP;
      */
     public function usageHelp()
     {
-        $help    = 'Available actions: ' . "\n";
+        $help    = 'Available actions: ' . PHP_EOL;
         $methods = get_class_methods($this);
         foreach ($methods as $method) {
             if (substr($method, -6) == 'Action') {
@@ -103,7 +123,7 @@ PHP;
                 if (method_exists($this, $helpMethod)) {
                     $help .= $this->$helpMethod();
                 }
-                $help .= "\n";
+                $help .= PHP_EOL;
             }
         }
 
@@ -143,10 +163,10 @@ PHP;
 
         $this->insertFileHeader($type);
         $this->insertFileBody($type);
-        file_put_contents(Varien_Autoload::getCacheFilePath(), 'return $classPathCache;' . PHP_EOL, FILE_APPEND);
+        file_put_contents($this->cacheFilePath, 'return $classPathCache;' . PHP_EOL, FILE_APPEND);
 
-        echo "Class path cache was successfully generated and saved to file " .
-            realpath(Varien_Autoload::getCacheFilePath()) . PHP_EOL;
+        echo "Class path cache was successfully generated and saved to file "
+            . realpath($this->cacheFilePath) . PHP_EOL;
     }
 
     /**
@@ -162,11 +182,11 @@ PHP;
         $fileHeader = str_replace('#HASH_CLASS_NAME#', $hashClassNameMarkerReplacement, $fileHeader);
         $fileHeader = str_replace('#TYPE#', self::$cacheClassTypes[$type]['type'], $fileHeader);
 
-        file_put_contents(Varien_Autoload::getCacheFilePath(), $fileHeader);
+        file_put_contents($this->cacheFilePath, $fileHeader);
     }
 
     /**
-     * Insert file body, i.e. many $classPathCache->#SET_METHOD#() lines
+     * Insert file body, i.e. many $classPathCache->offsetSet() lines
      *
      * @param string $type
      */
@@ -192,12 +212,12 @@ PHP;
                 $line = sprintf('$classPathCache->offsetSet("%s", "%s");', $className, $fileName);
             }
 
-            file_put_contents(Varien_Autoload::getCacheFilePath(), $line . PHP_EOL, FILE_APPEND);
+            file_put_contents($this->cacheFilePath, $line . PHP_EOL, FILE_APPEND);
         }
 
         if ($errorMessage) {
             echo $errorMessage;
-            unlink(Varien_Autoload::getCacheFilePath());
+            unlink($this->cacheFilePath);
             exit(1);
         }
     }
@@ -209,7 +229,7 @@ PHP;
      */
     private function getClassMap()
     {
-        $basePath  = realpath(Varien_Autoload::getBp()) . DIRECTORY_SEPARATOR;
+        $basePath  = realpath($this->basePath) . DIRECTORY_SEPARATOR;
         $directory = new RecursiveDirectoryIterator($basePath);
         $iterator  = new RecursiveIteratorIterator($directory);
         $regex     = new RegexIterator($iterator, '/^.+\.php$/i', RecursiveRegexIterator::GET_MATCH);
@@ -217,11 +237,13 @@ PHP;
         $map = array();
         foreach ($regex as $file) {
             $filePath = str_replace('\\', '/', str_replace($basePath, '', $file[0]));
-            if (strpos($filePath, 'shell') === 0) {
+            if (strpos($filePath, 'shell') === 0 || strpos($filePath, 'var') === 0
+                || strpos($filePath, '.modman') === 0
+            ) {
                 continue;
             }
 
-            $code = file_get_contents($file[0]);
+            $code   = file_get_contents($file[0]);
             $tokens = token_get_all($code);
 
             $count    = count($tokens);
@@ -236,32 +258,26 @@ PHP;
 
                 list($id) = $token;
 
-                switch ($id) {
-                    case T_CLASS:
-                    case T_INTERFACE:
-                        $class = '';
-                        do {
-                            ++$i;
-                            $token = $tokens[$i];
-                            if (is_string($token)) {
-                                continue;
-                            }
-                            list($type, $content) = $token;
-                            switch ($type) {
-                                case T_STRING:
-                                    $class = $content;
-                                    break;
-                            }
-                        } while (empty($class) && $i < $count);
-
-                        if (!empty($class)) {
-                            $map[$class] = $filePath;
+                if ($id == T_CLASS || $id == T_INTERFACE) {
+                    $class = null;
+                    do {
+                        $i++;
+                        $token = $tokens[$i];
+                        if (is_string($token)) {
+                            continue;
                         }
-                        break;
-                    default:
-                        break;
+                        list($type, $content) = $token;
+                        if ($type == T_STRING) {
+                            $class = $content;
+                            break;
+                        }
+                    } while (empty($class) && $i < $count);
+
+                    if (!empty($class)) {
+                        $map[$class] = $filePath;
+                    }
                 }
-                ++$i;
+                $i++;
             }
         }
 
