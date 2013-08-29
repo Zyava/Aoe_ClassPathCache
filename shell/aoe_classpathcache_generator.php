@@ -16,9 +16,27 @@ class Aoe_ClassPathCache_Generator_Shell extends Mage_Shell_Abstract
 <?php
 class Aoe_ClassPathCache extends #CLASS#
 {
+    private $currentMemoryUsage;
+
+    public function __construct($arg1 = array())
+    {
+        $this->currentMemoryUsage = memory_get_usage();
+
+        parent::__construct($arg1);
+    }
+
     public function offsetGet($className)
     {
         return parent::offsetGet(#HASH_CLASS_NAME#);
+    }
+
+    public function memoryUsage()
+    {
+        if (get_class($this) == 'Judy') {
+            return parent::memoryUsage();
+        } else {
+            return memory_get_usage() - $this->currentMemoryUsage;
+        }
     }
 }
 
@@ -108,6 +126,18 @@ PHP;
     }
 
     /**
+     * Generate class path cache files for all available types
+     */
+    public function generateAllCacheClassTypes()
+    {
+        foreach (array_keys(self::$cacheClassTypes) as $cacheClassType) {
+            $this->_args['type'] = $cacheClassType;
+            $this->cacheFilePath = '../var/' . $cacheClassType . '.php';
+            $this->generateAction();
+        }
+    }
+
+    /**
      * Retrieve usage help message
      *
      * @return string
@@ -159,10 +189,11 @@ PHP;
             exit(1);
         }
 
-        echo "Class path cache generation started..." . PHP_EOL;
+        echo "Class path cache of {$type} type generation started..." . PHP_EOL;
 
         $this->insertFileHeader($type);
         $this->insertFileBody($type);
+        file_put_contents($this->cacheFilePath, 'echo $classPathCache->memoryUsage() . PHP_EOL;' . PHP_EOL, FILE_APPEND);
         file_put_contents($this->cacheFilePath, 'return $classPathCache;' . PHP_EOL, FILE_APPEND);
 
         echo "Class path cache was successfully generated and saved to file "
@@ -286,4 +317,4 @@ PHP;
 }
 
 $shell = new Aoe_ClassPathCache_Generator_Shell();
-$shell->run();
+$shell->generateAllCacheClassTypes();
