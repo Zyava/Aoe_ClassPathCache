@@ -177,4 +177,14 @@ class Varien_Autoload
     {
         return self::$_cache;
     }
+
+    /**
+     * Get base path
+     *
+     * @return string
+     */
+    public static function getBp()
+    {
+        return self::$_BP;
+    }
 }

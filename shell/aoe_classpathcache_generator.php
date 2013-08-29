@@ -12,13 +12,6 @@ require_once 'abstract.php';
  */
 class Aoe_ClassPathCache_Generator_Shell extends Mage_Shell_Abstract
 {
-    /**#@+
-     * Constants
-     */
-    const CLASS_PATH_CACHE_FILE_NAME = '../var/cache/classPathCache.php';
-    const MAGENTO_BASE_DIR           = '..';
-    /**#@-*/
-
     private static $fileTemplate = <<<'PHP'
 <?php
 class Aoe_ClassPathCache extends #CLASS#
@@ -150,10 +143,10 @@ PHP;
 
         $this->insertFileHeader($type);
         $this->insertFileBody($type);
-        file_put_contents(self::CLASS_PATH_CACHE_FILE_NAME, 'return $classPathCache;' . PHP_EOL, FILE_APPEND);
+        file_put_contents(Varien_Autoload::getCacheFilePath(), 'return $classPathCache;' . PHP_EOL, FILE_APPEND);
 
         echo "Class path cache was successfully generated and saved to file " .
-            realpath(self::CLASS_PATH_CACHE_FILE_NAME) . PHP_EOL;
+            realpath(Varien_Autoload::getCacheFilePath()) . PHP_EOL;
     }
 
     /**
@@ -169,7 +162,7 @@ PHP;
         $fileHeader = str_replace('#HASH_CLASS_NAME#', $hashClassNameMarkerReplacement, $fileHeader);
         $fileHeader = str_replace('#TYPE#', self::$cacheClassTypes[$type]['type'], $fileHeader);
 
-        file_put_contents(self::CLASS_PATH_CACHE_FILE_NAME, $fileHeader);
+        file_put_contents(Varien_Autoload::getCacheFilePath(), $fileHeader);
     }
 
     /**
@@ -199,12 +192,12 @@ PHP;
                 $line = sprintf('$classPathCache->offsetSet("%s", "%s");', $className, $fileName);
             }
 
-            file_put_contents(self::CLASS_PATH_CACHE_FILE_NAME, $line . PHP_EOL, FILE_APPEND);
+            file_put_contents(Varien_Autoload::getCacheFilePath(), $line . PHP_EOL, FILE_APPEND);
         }
 
         if ($errorMessage) {
             echo $errorMessage;
-            unlink(self::CLASS_PATH_CACHE_FILE_NAME);
+            unlink(Varien_Autoload::getCacheFilePath());
             exit(1);
         }
     }
@@ -216,7 +209,7 @@ PHP;
      */
     private function getClassMap()
     {
-        $basePath  = realpath(self::MAGENTO_BASE_DIR) . DIRECTORY_SEPARATOR;
+        $basePath  = realpath(Varien_Autoload::getBp()) . DIRECTORY_SEPARATOR;
         $directory = new RecursiveDirectoryIterator($basePath);
         $iterator  = new RecursiveIteratorIterator($directory);
         $regex     = new RegexIterator($iterator, '/^.+\.php$/i', RecursiveRegexIterator::GET_MATCH);
